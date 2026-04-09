@@ -59,7 +59,10 @@ class HardenedServer(_BaseServer):
 
         self._security_policies_set = True
         logger.info("Server security policies configured: %s", security_policies)
-        super().set_security_policy(security_policies, permission_ruleset)
+        if permission_ruleset is None:
+            super().set_security_policy(security_policies)
+        else:
+            super().set_security_policy(security_policies, permission_ruleset)
 
     def start(self) -> None:
         """Start server with Presidio pre-checks."""
