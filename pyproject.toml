@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "opcua>=0.98.13",
-    "cryptography>=41.0.6",
+    "cryptography>=46.0.7",
 ]
 
 [project.optional-dependencies]
