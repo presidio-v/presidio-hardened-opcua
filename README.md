@@ -150,3 +150,10 @@ ruff check .
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## SDLC
+
+This repository is developed under the Presidio hardened-family SDLC:
+<https://github.com/presidio-v/presidio-hardened-docs/blob/main/sdlc/sdlc-report.md>.
