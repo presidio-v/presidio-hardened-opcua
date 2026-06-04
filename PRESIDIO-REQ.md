@@ -105,20 +105,41 @@ all of which already exist in code today:
    security decisions, WARNING for rejections. This schema is the contract a
    future Rust gateway emits too, so one SIEM ingests both identically.
 
-**Open profile decisions (to be resolved when the profile is written):**
+**Resolved profile decisions.** All three follow the project's established
+spine: secure-by-default, an explicit logged escape hatch, and parity-critical
+logic in the shared core.
 
-- **Cipher floor.** The profile names `Basic256Sha256` as the floor but does
-  not yet *forbid* the deprecated `Basic128Rsa15` / `Basic256` suites. Decide
-  whether to ban them explicitly.
-- **Trust boundary.** Validation today is expiry + self-signed only; `asyncua`
-  performs its own trust-store plumbing. The profile must state exactly where
-  the trust boundary sits so the sync and async surfaces cannot silently
-  disagree on what "validated" means.
-- **Anomaly recording point.** Access is currently recorded at `get_node`.
-  Under `asyncua`, `get_node` is pure object construction with no I/O, so a
-  node handle built once and read many times would be undercounted. The
-  profile should fix the recording point at the **read/write call**, and both
-  surfaces should be (re)wired to that point.
+- **Cipher floor — reject deprecated suites by default, with an opt-out.** The
+  floor is `Basic256Sha256`. The SHA-1-based `Basic128Rsa15` and `Basic256`
+  suites are rejected by default (today only `None`/`NoSecurity` is blocked, so
+  this also closes a real gap). A new `SecurityPolicy.allow_deprecated_security_policies`
+  flag (default `False`) provides an explicit escape hatch for legacy OT
+  devices that only speak the older suites; using it logs a WARNING on every
+  use. `Aes128_Sha256_RsaOaep` / `Aes256_Sha256_RsaPss` are named as
+  *preferred* (recommended, not required).
+- **Trust boundary — documented three layers, with a shared-core anchor check.**
+  The profile defines three layers: (1) **Presidio pre-flight** — local cert
+  hygiene (parseable, within validity window, not self-signed unless allowed),
+  shared and identical across surfaces; (2) **the OPC UA stack** — handshake
+  verification of the peer cert against a configured trust list; (3) **the
+  customer OT CA** — issuance, anchors, revocation distribution (out of scope).
+  Two normative rules apply: Presidio MUST fail closed rather than run the
+  stack in accept-any-peer mode; and when a trust-anchor path is configured in
+  `SecurityPolicy`, Presidio performs a **shared-core trust-anchor check**
+  (verifies the presented server cert chains to that anchor, independent of the
+  stack) so the sync and async surfaces cannot diverge on what "validated"
+  means. Behaviour is unchanged when no anchor is configured (preserves the
+  drop-in model). Revocation (CRL/OCSP) is explicitly out, delegated to the
+  customer CA.
+- **Anomaly recording point — moved to server-touching operations via
+  `HardenedNode`.** Access is no longer recorded at `get_node` (pure object
+  construction with no I/O, which mismeasures the signal). Instead a
+  `HardenedNode(Node)` subclass returned from `get_node` records one event per
+  logical `read` / `write` / `browse` / `call_method`, keyed by node ID, and
+  delegates up. Because `HardenedNode` *is-a* `Node`, there is no
+  isinstance/compatibility breakage. `get_node` retains node-ID sanitisation
+  only. This same node is the natural hook for variant sanitisation on write
+  and browse-path sanitisation on browse — see *Known gaps*.
 
 ### Phase B — v0.2.0: parallel `aio` surface
 
@@ -133,8 +154,9 @@ mapping is non-uniform:
 - `Client.connect`, `set_security`, `set_security_string` become coroutines.
 - `Client.get_node` **stays synchronous** (construction only); its node-ID
   sanitisation ports verbatim.
-- Anomaly recording and variant sanitisation move to the async read/write
-  calls (per the Phase A decision).
+- Anomaly recording and variant/browse sanitisation live on the
+  `HardenedNode` subclass returned by `get_node` (per the Phase A decision),
+  with sync and async node variants over the shared core.
 - `Server` gains an async `init()` (asyncua splits construction from init)
   and async `start` / `stop`; `set_security_policy` stays synchronous.
 
@@ -178,14 +200,21 @@ surface is scheduled, but customers should treat `aio` as the forward path.
 
 ## Known gaps
 
-Logged honestly so they are tracked rather than rediscovered:
+Logged honestly so they are tracked rather than rediscovered. Both are now
+resolved *in plan* by the Phase A decisions and land in code in Phase B:
 
 - **Unwired sanitisers.** `sanitize_browse_path` and `sanitize_variant` are
   implemented but not yet called from the client/server overrides; only
-  `sanitize_node_id` is wired in. The profile must specify hook points for
-  all three, and Phase B is the natural point to wire them into both surfaces.
-- **Anomaly recording point is semantically weak for async** (see the Phase A
-  open decision); it counts node-handle creation rather than actual reads.
+  `sanitize_node_id` is wired in (at `get_node`). Resolution: both attach to
+  the `HardenedNode` returned by `get_node` — variant sanitisation on write,
+  browse-path sanitisation on browse.
+- **Cipher-suite floor not enforced.** Only `None`/`NoSecurity` is rejected
+  today; deprecated SHA-1 suites pass through. Resolution: reject
+  `Basic128Rsa15` / `Basic256` by default, gated by
+  `allow_deprecated_security_policies` (see *Resolved profile decisions*).
+- **Anomaly recording point mismeasured the signal** by counting node-handle
+  creation rather than server-touching operations. Resolution: recording moves
+  to `HardenedNode` read/write/browse/method calls.
 
 ## SDLC
 
