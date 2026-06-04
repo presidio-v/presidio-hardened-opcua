@@ -70,11 +70,151 @@ is the demonstration.
 
 ## Roadmap
 
-- **v0.2.0 — asyncua migration path.** Add an `asyncua`-compatible API
-  surface (`presidio_opcua.aio`) alongside the existing synchronous one.
-  The synchronous surface remains the default until the customer's
-  integration migrates. Deprecation of the synchronous surface is not
-  planned at this stage; both will be supported in parallel.
+The library evolves in three sequenced layers. The ordering is deliberate:
+a normative hardening profile and its conformance tests come first, because
+they are what keep every implementation surface (sync, async, and a future
+Rust gateway) enforcing *identical* security semantics rather than drifting
+apart. Dependency arrows: the profile (Phase A) unblocks the async surface
+(Phase B) and the gateway decision (Phase D); the feasibility spike (Phase C)
+gates the gateway. B and C can run in parallel once A exists.
+
+### Phase A — Hardening Profile + conformance tests
+
+Extract the security rules that are currently *implicit in Python behaviour*
+into a normative `HARDENING-PROFILE.md`, and back it with a conformance test
+suite asserted against the profile (not merely against current code). This is
+the source of truth every surface implements. The profile covers six domains,
+all of which already exist in code today:
+
+1. **Transport & security mode** — reject `MessageSecurityMode.None` unless
+   `allow_no_security`; default to `SignAndEncrypt`; server strips
+   `NoSecurity` policies and fails closed if none remain; auto-apply
+   `Basic256Sha256_SignAndEncrypt` when started with no policy set.
+2. **Certificate validation** — reject expired / not-yet-valid and (by
+   default) self-signed certificates; validate the server certificate when
+   supplied. Chain-to-anchor and revocation remain delegated to the
+   customer's OT CA (see *Out of scope*).
+3. **Input sanitisation** — node IDs, browse paths, and method/variant
+   arguments: length caps, path-traversal rejection, well-formed-node-ID
+   whitelisting ahead of injection heuristics.
+4. **Anomaly detection** — access-rate and unique-node (scan) thresholds
+   over a sliding window, emitting `high_rate` / `node_scan` alerts.
+5. **Dependency / CVE posture** — import-time version-floor checks for the
+   upstream OPC UA stack and `cryptography`.
+6. **Logging schema** — namespaced `presidio_opcua.*` loggers; INFO for
+   security decisions, WARNING for rejections. This schema is the contract a
+   future Rust gateway emits too, so one SIEM ingests both identically.
+
+**Resolved profile decisions.** All three follow the project's established
+spine: secure-by-default, an explicit logged escape hatch, and parity-critical
+logic in the shared core.
+
+- **Cipher floor — reject deprecated suites by default, with an opt-out.** The
+  floor is `Basic256Sha256`. The SHA-1-based `Basic128Rsa15` and `Basic256`
+  suites are rejected by default (today only `None`/`NoSecurity` is blocked, so
+  this also closes a real gap). A new `SecurityPolicy.allow_deprecated_security_policies`
+  flag (default `False`) provides an explicit escape hatch for legacy OT
+  devices that only speak the older suites; using it logs a WARNING on every
+  use. `Aes128_Sha256_RsaOaep` / `Aes256_Sha256_RsaPss` are named as
+  *preferred* (recommended, not required).
+- **Trust boundary — documented three layers, with a shared-core anchor check.**
+  The profile defines three layers: (1) **Presidio pre-flight** — local cert
+  hygiene (parseable, within validity window, not self-signed unless allowed),
+  shared and identical across surfaces; (2) **the OPC UA stack** — handshake
+  verification of the peer cert against a configured trust list; (3) **the
+  customer OT CA** — issuance, anchors, revocation distribution (out of scope).
+  Two normative rules apply: Presidio MUST fail closed rather than run the
+  stack in accept-any-peer mode; and when a trust-anchor path is configured in
+  `SecurityPolicy`, Presidio performs a **shared-core trust-anchor check**
+  (verifies the presented server cert chains to that anchor, independent of the
+  stack) so the sync and async surfaces cannot diverge on what "validated"
+  means. Behaviour is unchanged when no anchor is configured (preserves the
+  drop-in model). Revocation (CRL/OCSP) is explicitly out, delegated to the
+  customer CA.
+- **Anomaly recording point — moved to server-touching operations via
+  `HardenedNode`.** Access is no longer recorded at `get_node` (pure object
+  construction with no I/O, which mismeasures the signal). Instead a
+  `HardenedNode(Node)` subclass returned from `get_node` records one event per
+  logical `read` / `write` / `browse` / `call_method`, keyed by node ID, and
+  delegates up. Because `HardenedNode` *is-a* `Node`, there is no
+  isinstance/compatibility breakage. `get_node` retains node-ID sanitisation
+  only. This same node is the natural hook for variant sanitisation on write
+  and browse-path sanitisation on browse — see *Known gaps*.
+
+### Phase B — v0.2.0: parallel `aio` surface
+
+Add an `asyncua`-compatible API surface (`presidio_opcua.aio`) **alongside**
+the existing synchronous one. The synchronous surface remains the default
+until the customer's integration migrates; both are supported in parallel.
+The entire security core (`security`, `sanitization`, `anomaly`, `dep_check`)
+is pure, I/O-free logic and is shared verbatim between both surfaces — "one
+brain, two shells." Only the thin I/O wrappers fork, and the sync→async
+mapping is non-uniform:
+
+- `Client.connect`, `set_security`, `set_security_string` become coroutines.
+- `Client.get_node` **stays synchronous** (construction only); its node-ID
+  sanitisation ports verbatim.
+- Anomaly recording and variant/browse sanitisation live on the
+  `HardenedNode` subclass returned by `get_node` (per the Phase A decision),
+  with sync and async node variants over the shared core.
+- `Server` gains an async `init()` (asyncua splits construction from init)
+  and async `start` / `stop`; `set_security_policy` stays synchronous.
+
+Phase B also adds an `asyncua` entry to the CVE check and a `pytest-asyncio`
+axis to the test matrix; the shared security-core tests still run once.
+
+### Phase C — Rust gateway feasibility spike (decision, not product)
+
+A timeboxed, throwaway prototype answering one question: can the Rust
+`async-opcua` stack terminate a `SignAndEncrypt` secure channel as a *server*
+to downstream clients **and** originate one as a *client* to upstream
+servers, bridging the address space while enforcing two or three profile
+rules? This is necessary because OPC UA secures at the SecureChannel layer:
+a hardening gateway cannot be a transparent proxy — it must be a full
+dual-stack endpoint. The spike's only deliverable is a go/no-go memo on the
+Rust stack's production-readiness for both roles.
+
+### Phase D — (conditional on C) Rust hardened gateway
+
+Only if Phase C returns "go": scope a standalone Rust hardened OPC UA gateway
+as its own repository / product, implementing the **same** hardening profile
+as the Python wrapper. It serves the deployments the import-swap wrapper
+cannot — non-Python clients, network-DMZ enforcement between IT and OT, a
+single audit chokepoint with no per-client code change. The Python wrapper
+and the Rust gateway are complementary surfaces of one profile, not a
+rewrite of one into the other. A full Rust refactor of *this* library is
+explicitly rejected: it would discard the import-swap distribution model and
+the courseware role, and would move memory-safety guarantees to glue code
+(cert checks, regex, logging) rather than to the wire-facing protocol parser,
+which lives upstream and is out of this library's scope regardless.
+
+## Support posture — synchronous surface
+
+The synchronous surface wraps `python-opcua`, which FreeOpcUa has deprecated
+in favour of `asyncua`. It is therefore supported as a **compatibility
+bridge** for existing integrations, not as a perpetual surface. If a
+vulnerability is reported in `python-opcua` with no upstream fix available,
+the documented remediation is **migration to the `aio` surface**, not a
+backport into the unmaintained library. No hard deprecation of the sync
+surface is scheduled, but customers should treat `aio` as the forward path.
+
+## Known gaps
+
+Logged honestly so they are tracked rather than rediscovered. Both are now
+resolved *in plan* by the Phase A decisions and land in code in Phase B:
+
+- **Unwired sanitisers.** `sanitize_browse_path` and `sanitize_variant` are
+  implemented but not yet called from the client/server overrides; only
+  `sanitize_node_id` is wired in (at `get_node`). Resolution: both attach to
+  the `HardenedNode` returned by `get_node` — variant sanitisation on write,
+  browse-path sanitisation on browse.
+- **Cipher-suite floor not enforced.** Only `None`/`NoSecurity` is rejected
+  today; deprecated SHA-1 suites pass through. Resolution: reject
+  `Basic128Rsa15` / `Basic256` by default, gated by
+  `allow_deprecated_security_policies` (see *Resolved profile decisions*).
+- **Anomaly recording point mismeasured the signal** by counting node-handle
+  creation rather than server-touching operations. Resolution: recording moves
+  to `HardenedNode` read/write/browse/method calls.
 
 ## SDLC
 
