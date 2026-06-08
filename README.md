@@ -2,7 +2,7 @@
 
 **Hardened OPC UA wrapper with Presidio security extensions.**
 
-[![CI](https://github.com/your-org/presidio-hardened-opcua/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/presidio-hardened-opcua/actions/workflows/ci.yml)
+[![CI](https://github.com/presidio-v/presidio-hardened-opcua/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-opcua/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Drop-in replacement for [python-opcua](https://github.com/FreeOpcUa/python-opcua) that adds **strong security defaults**, **certificate validation**, **anomaly detection**, and **input sanitization** — all without changing your existing OPC UA code.
@@ -140,7 +140,7 @@ logging.basicConfig(level=logging.INFO)
 ## Development
 
 ```bash
-git clone https://github.com/your-org/presidio-hardened-opcua.git
+git clone https://github.com/presidio-v/presidio-hardened-opcua.git
 cd presidio-hardened-opcua
 pip install -e ".[dev]"
 pytest --cov=presidio_opcua
