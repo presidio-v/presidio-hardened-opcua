@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "presidio-hardened-opcua"
 version = "0.1.0"
-description = "Hardened OPC UA wrapper with Presidio security extensions"
+description = "Hardened OPC UA wrapper with Presidio security extensions. Independent of Microsoft Presidio (a data-anonymization toolkit)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
