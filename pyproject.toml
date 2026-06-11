@@ -24,14 +24,14 @@ classifiers = [
 ]
 dependencies = [
     "opcua>=0.98.13",
-    "cryptography>=41.0.6",
+    "cryptography>=46.0.7",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "ruff>=0.4.0",
+    "pytest>=8.4.2",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.10",
 ]
 
 [tool.hatch.build.targets.wheel]
