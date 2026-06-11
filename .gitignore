@@ -14,3 +14,8 @@ build/
 # Local IDE / tooling (never commit)
 .specify/
 .vscode/
+
+# Test certificates and private keys (never commit)
+certs/
+*.pem
+*.der
