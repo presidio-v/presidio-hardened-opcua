@@ -35,8 +35,8 @@ That's it. Your existing code gains security hardening automatically.
 from opcua import Client
 
 client = Client("opc.tcp://10.0.0.5:4840")
-client.connect()                        # ← connects with NO encryption
-node = client.get_node("ns=2;i=1")      # ← no input sanitization
+client.connect()  # ← connects with NO encryption
+node = client.get_node("ns=2;i=1")  # ← no input sanitization
 value = node.get_value()
 client.disconnect()
 ```
@@ -49,7 +49,7 @@ client.disconnect()
 from presidio_opcua import Client, SecurityPolicy
 
 policy = SecurityPolicy(
-    allow_self_signed=False,    # reject self-signed certs
+    allow_self_signed=False,  # reject self-signed certs
     session_timeout_ms=30_000,  # tight session timeout
 )
 
@@ -88,10 +88,12 @@ from opcua import ua
 server = Server()
 
 # NoSecurity is silently filtered out:
-server.set_security_policy([
-    ua.SecurityPolicyType.NoSecurity,                        # ← rejected
-    ua.SecurityPolicyType.Basic256Sha256_SignAndEncrypt,      # ← kept
-])
+server.set_security_policy(
+    [
+        ua.SecurityPolicyType.NoSecurity,  # ← rejected
+        ua.SecurityPolicyType.Basic256Sha256_SignAndEncrypt,  # ← kept
+    ]
+)
 
 server.start()
 ```
@@ -114,10 +116,10 @@ server.start()
 from presidio_opcua import SecurityPolicy
 
 policy = SecurityPolicy(
-    allow_self_signed=False,         # reject self-signed certificates
-    allow_no_security=False,         # reject None security mode
-    session_timeout_ms=30_000,       # session timeout in milliseconds
-    secure_channel_timeout_ms=60_000,# secure channel timeout
+    allow_self_signed=False,  # reject self-signed certificates
+    allow_no_security=False,  # reject None security mode
+    session_timeout_ms=30_000,  # session timeout in milliseconds
+    secure_channel_timeout_ms=60_000,  # secure channel timeout
 )
 ```
 
@@ -127,6 +129,7 @@ Enable security event logging:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 # All Presidio security events are logged under:
