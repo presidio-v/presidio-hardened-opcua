@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from presidio_opcua.anomaly import AnomalyDetector
 from presidio_opcua.client import HardenedClient as Client
 from presidio_opcua.dep_check import check_dependencies
+from presidio_opcua.limits import MessageLimitError, MessageLimits, install_guards
 from presidio_opcua.sanitization import sanitize_browse_path, sanitize_node_id, sanitize_variant
 from presidio_opcua.security import (
     PresidioSecurityError,
@@ -24,6 +25,10 @@ except ImportError as exc:
         "presidio-hardened-opcua requires the 'opcua' package. Install it with: pip install opcua"
     ) from exc
 
+# CVE-2022-25304: bound chunk size, chunk count and message size for every opcua
+# connection in this process (see presidio_opcua.limits).
+install_guards()
+
 __all__ = [
     "Client",
     "Server",
@@ -38,5 +43,7 @@ __all__ = [
     "sanitize_variant",
     "AnomalyDetector",
     "check_dependencies",
+    "MessageLimits",
+    "MessageLimitError",
     "__version__",
 ]

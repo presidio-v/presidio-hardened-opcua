@@ -7,6 +7,11 @@
 
 Drop-in replacement for [python-opcua](https://github.com/FreeOpcUa/python-opcua) that adds **strong security defaults**, **certificate validation**, **anomaly detection**, and **input sanitization** — all without changing your existing OPC UA code.
 
+> **Security notice — CVE-2022-25304.** The underlying `opcua` (python-opcua 0.98.13) is
+> unmaintained and has no fix for this memory-exhaustion issue. Since 0.2.0 this package
+> bounds chunk size, chunk count and message size process-wide on import, so scanners will
+> still flag `opcua` but the attack is mitigated. See [SECURITY.md](SECURITY.md#known-issues).
+
 ## Installation
 
 ```bash
@@ -107,6 +112,7 @@ server.start()
 | **Input Sanitization** | Validates node IDs, browse paths, and variant values against injection patterns |
 | **Anomaly Detection** | Monitors access rate and unique-node counts; logs warnings on suspicious activity |
 | **Dependency CVE Check** | Checks installed versions of `opcua` and `cryptography` against known vulnerabilities |
+| **Message Limits** | Bounds chunk size, chunk count and message size (CVE-2022-25304) |
 | **Session Hardening** | Configurable session and channel timeouts (defaults: 30s / 60s) |
 | **Security Event Logging** | All security decisions logged via Python `logging` under `presidio_opcua.*` |
 
@@ -123,6 +129,20 @@ policy = SecurityPolicy(
 )
 ```
 
+### Message limits (CVE-2022-25304)
+
+```python
+from presidio_opcua import Client, Server
+
+server = Server(max_chunk_count=256, max_message_size=16 * 1024 * 1024)
+client = Client("opc.tcp://10.0.0.5:4840", max_chunk_size=1024 * 1024)
+```
+
+Defaults: 64 MiB per chunk, 1601 chunks per message, 100 MiB per message. Environment
+overrides: `PRESIDIO_OPCUA_MAX_CHUNK_SIZE`, `PRESIDIO_OPCUA_MAX_CHUNK_COUNT`,
+`PRESIDIO_OPCUA_MAX_MESSAGE_SIZE`. The guards apply to every `opcua` connection in the
+process; the keyword arguments set limits for that instance only.
+
 ## Logging
 
 Enable security event logging:
@@ -138,6 +158,7 @@ logging.basicConfig(level=logging.INFO)
 #   presidio_opcua.security
 #   presidio_opcua.anomaly
 #   presidio_opcua.dep_check
+#   presidio_opcua.limits
 ```
 
 ## Development

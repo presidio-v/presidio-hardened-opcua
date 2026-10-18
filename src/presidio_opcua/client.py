@@ -10,6 +10,7 @@ from opcua import ua
 
 from presidio_opcua.anomaly import AnomalyDetector
 from presidio_opcua.dep_check import check_dependencies
+from presidio_opcua.limits import MessageLimits, attach_limits
 from presidio_opcua.sanitization import sanitize_node_id
 from presidio_opcua.security import (
     PresidioSecurityError,
@@ -26,7 +27,9 @@ class HardenedClient(_BaseClient):
     Drop-in replacement for ``opcua.Client`` with Presidio security hardening.
 
     Enforces certificate validation, strict security policies, input sanitization,
-    anomaly detection, and secure session defaults.
+    anomaly detection, and secure session defaults. Received chunks and messages are
+    bounded by ``message_limits`` (CVE-2022-25304); arguments left as ``None`` fall back
+    to the ``PRESIDIO_OPCUA_MAX_*`` environment variables, then to the package defaults.
     """
 
     def __init__(
@@ -35,9 +38,20 @@ class HardenedClient(_BaseClient):
         timeout: int = 4,
         *,
         security_policy: SecurityPolicy | None = None,
+        max_chunk_size: int | None = None,
+        max_chunk_count: int | None = None,
+        max_message_size: int | None = None,
     ) -> None:
         super().__init__(url, timeout=timeout)
         self.presidio_policy = security_policy or SecurityPolicy()
+        self.message_limits = MessageLimits.from_env(
+            max_chunk_size=max_chunk_size,
+            max_chunk_count=max_chunk_count,
+            max_message_size=max_message_size,
+        )
+        # Advertise the limits to the server in the Hello message.
+        self.max_messagesize = self.message_limits.max_message_size
+        self.max_chunkcount = self.message_limits.max_chunk_count
         self._security_configured = False
         self._anomaly_detector = AnomalyDetector()
 
@@ -103,6 +117,16 @@ class HardenedClient(_BaseClient):
         logger.info("Establishing Presidio-hardened connection...")
         super().connect()
         logger.info("Presidio-hardened secure connection established")
+
+    def connect_socket(self) -> None:
+        """Open the socket and bind this client's message limits to its connection."""
+        super().connect_socket()
+        uasocket = getattr(self.uaclient, "_uasocket", None)
+        connection = getattr(uasocket, "_connection", None)
+        if connection is not None:
+            attach_limits(connection, self.message_limits)
+        else:
+            logger.warning("Could not bind message limits; process defaults apply")
 
     def get_node(self, nodeid: Any) -> Any:
         """Get a node with input sanitization and anomaly tracking."""
