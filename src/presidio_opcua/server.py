@@ -9,6 +9,7 @@ from opcua import Server as _BaseServer
 from opcua import ua
 
 from presidio_opcua.dep_check import check_dependencies
+from presidio_opcua.limits import MessageLimits, attach_limits
 from presidio_opcua.security import PresidioSecurityError, SecurityPolicy
 
 logger = logging.getLogger("presidio_opcua.server")
@@ -18,16 +19,28 @@ class HardenedServer(_BaseServer):
     """
     Drop-in replacement for ``opcua.Server`` with Presidio security hardening.
 
-    Enforces strict security policies and rejects insecure configurations.
+    Enforces strict security policies and rejects insecure configurations. Received
+    chunks and messages are bounded by ``message_limits`` (CVE-2022-25304); arguments
+    left as ``None`` fall back to the ``PRESIDIO_OPCUA_MAX_*`` environment variables,
+    then to the package defaults.
     """
 
     def __init__(
         self,
         *,
         security_policy: SecurityPolicy | None = None,
+        max_chunk_size: int | None = None,
+        max_chunk_count: int | None = None,
+        max_message_size: int | None = None,
     ) -> None:
         super().__init__()
         self.presidio_policy = security_policy or SecurityPolicy()
+        self.message_limits = MessageLimits.from_env(
+            max_chunk_size=max_chunk_size,
+            max_chunk_count=max_chunk_count,
+            max_message_size=max_message_size,
+        )
+        attach_limits(self.iserver, self.message_limits)
         self._security_policies_set = False
         self._certificate_loaded = False
 

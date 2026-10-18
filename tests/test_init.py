@@ -6,7 +6,7 @@ from __future__ import annotations
 def test_version():
     from presidio_opcua import __version__
 
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.2.0"
 
 
 def test_public_exports():
