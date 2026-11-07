@@ -25,7 +25,8 @@ jobs:
         run: ruff check .
 
   test:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 26.04, which has no Python 3.9; 24.04 still does.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
