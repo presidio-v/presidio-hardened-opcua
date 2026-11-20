@@ -55,8 +55,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]" "pip-audit==2.10.1"
       - name: Run pip-audit
-        # PYSEC-2026-888 (CVE-2022-25304) affects every opcua release and has no fix
-        # upstream. This package bounds chunk size, chunk count and message size on
-        # import, so the DoS is mitigated here (SECURITY.md#known-issues). Any other
-        # finding fails the job.
-        run: pip-audit --progress-spinner=off --skip-editable --ignore-vuln PYSEC-2026-888
+        # Ignores only the unexpired advisories in audit-exceptions.txt (today
+        # PYSEC-2026-888, CVE-2022-25304: no upstream fix, mitigated on import, see
+        # SECURITY.md#known-issues). Any other finding, or an expired entry, fails the job.
+        run: |
+          today=$(date -u +%F)
+          ignore=()
+          while read -r id scope kind expires rest; do
+            case "$id" in ""|"#"*|"@"*) continue ;; esac
+            if [[ "$expires" < "$today" ]]; then
+              echo "::warning::audit-exceptions.txt: $id expired on $expires and is no longer ignored"
+              continue
+            fi
+            ignore+=(--ignore-vuln "$id")
+          done < audit-exceptions.txt
+          pip-audit --progress-spinner=off --skip-editable "${ignore[@]}"

@@ -121,6 +121,9 @@ wrapper `asyncua.sync` keeps a blocking API close to python-opcua's.
 - **GitHub CodeQL**: Static analysis on every push and PR
 - **Dependabot**: Automated dependency update PRs
 - **CI Pipeline**: ruff linting + full test suite on every commit
+- **Dependency audit**: `pip-audit` on every commit; the only ignored advisories are the
+  unexpired entries in [`audit-exceptions.txt`](./audit-exceptions.txt), each pinned to a
+  version and tied to a section of this file
 
 ## Software Development Lifecycle
 
