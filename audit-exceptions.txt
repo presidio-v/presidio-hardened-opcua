@@ -1,0 +1,11 @@
+# pip-audit exception register. Read by CI (.github/workflows/ci.yml) and by the
+# PRESIDIO nightly scan, which also needs the operator's acknowledgement before it
+# leaves an entry out of its report. One entry per line, all fields mandatory:
+#
+#   <advisory id> <scope runtime|extras|shipped|all> <kind accepted|blocker> <expires YYYY-MM-DD> <package==version> <reason citing SECURITY.md#section>
+#
+# accepted: assessed and mitigated or unreachable; renew or remove by the expiry date.
+# blocker:  no fix within our pins yet; stops being ignored once a fix is published.
+# An expired entry is no longer ignored, so CI fails until it is renewed or removed.
+
+PYSEC-2026-888  runtime  accepted  2027-05-20  opcua==0.98.13  no upstream fix (python-opcua unmaintained); receive paths bounded on import; SECURITY.md#cve-2022-25304--mitigated-not-fixed
